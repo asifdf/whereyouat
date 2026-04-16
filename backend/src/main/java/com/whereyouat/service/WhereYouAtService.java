@@ -90,7 +90,7 @@ public class WhereYouAtService {
         if (userRepository.existsByUsername(normalized)) {
             throw new IllegalArgumentException("Username already taken");
         }
-        String id = "user-" + UUID.randomUUID();
+        String id = UUID.randomUUID().toString();
         String avatarUrl = "https://i.pravatar.cc/80?u=" + normalized;
         UserEntity user = new UserEntity(id, normalized, request.getName(), avatarUrl, hashPassword(request.getPassword()));
         userRepository.save(user);
