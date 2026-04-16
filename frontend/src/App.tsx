@@ -348,7 +348,8 @@ function App() {
       : 'Uploaded from map uploader';
 
     const imageUrl = await dataUrlFromFile(file);
-    const chunkSize = 1024 * 1024;
+    // Keep each JSON request body well below default proxy limits.
+    const chunkSize = 256 * 1024;
     const totalChunks = Math.ceil(imageUrl.length / chunkSize);
     const uploadId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto

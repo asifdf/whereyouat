@@ -34,8 +34,9 @@ jobs:
           cp backend/target/*.jar deploy/application.jar
           cp Procfile deploy/Procfile
           cp -R .ebextensions deploy/.ebextensions
+          cp -R .platform deploy/.platform
           cd deploy
-          zip -r deployment.zip application.jar Procfile .ebextensions
+          zip -r deployment.zip application.jar Procfile .ebextensions .platform
 
       # 5. AWS 인증
       - name: Configure AWS credentials
