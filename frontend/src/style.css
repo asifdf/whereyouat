@@ -51,26 +51,30 @@ body,
 
 .map-container {
   width: 100%;
-  height: calc(100dvh - 130px);
+  height: calc(100dvh - 56px);
   min-height: 320px;
 }
 
 .sidebar {
   order: 2;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  height: calc(100dvh - 56px);
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(10px);
   border-top: 1px solid #d8d8d8;
   padding: 16px;
-  max-height: 46dvh;
+  max-height: none;
   overflow-y: auto;
+  transform: translateY(0);
+  transition: transform 0.28s ease;
 }
 
 .app-shell.sidebar-collapsed .sidebar {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-top: none;
-  overflow: hidden;
+  transform: translateY(105%);
 }
 
 .section {
@@ -267,11 +271,13 @@ button:hover {
   }
 
   .sidebar {
+    position: static;
     order: 1;
-    max-height: none;
+    height: auto;
     border-top: none;
     border-right: 1px solid #d8d8d8;
     padding: 20px;
+    transform: none;
   }
 
   .map-area {
@@ -288,10 +294,11 @@ button:hover {
   }
 
   .app-shell.sidebar-collapsed .sidebar {
-    max-height: none;
+    transform: none;
     padding: 0;
     border-right: none;
     border-top: none;
+    overflow: hidden;
   }
 
   .photo-grid {

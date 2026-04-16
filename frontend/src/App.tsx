@@ -56,6 +56,7 @@ function App() {
   const [search, setSearch] = useState('');
   const [selectedMarker, setSelectedMarker] = useState<PhotoMarker | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadTagText, setUploadTagText] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const [newPin, setNewPin] = useState({ title: '', description: '', latitude: '', longitude: '', taggedNames: '' });
   const [newMemory, setNewMemory] = useState({ title: '', body: '', photoUrl: '' });
@@ -335,6 +336,18 @@ function App() {
   };
 
   const uploadPhotoInChunks = async (file: File, coords: { latitude: number; longitude: number }) => {
+    const taggedUsers = Array.from(
+      new Set(
+        uploadTagText
+          .split(/[\s,]+/)
+          .map((item) => item.trim().replace(/^@/, '').toLowerCase())
+          .filter(Boolean)
+      )
+    );
+    const description = taggedUsers.length
+      ? `함께한 친구: ${taggedUsers.map((u) => `@${u}`).join(' ')}`
+      : 'Uploaded from map uploader';
+
     const imageUrl = await dataUrlFromFile(file);
     const chunkSize = 1024 * 1024;
     const totalChunks = Math.ceil(imageUrl.length / chunkSize);
@@ -356,7 +369,7 @@ function App() {
           title: file.name,
           latitude: coords.latitude,
           longitude: coords.longitude,
-          description: 'Uploaded from map uploader',
+          description,
           chunkIndex: index,
           totalChunks,
           chunkData,
@@ -417,6 +430,7 @@ function App() {
       setUploadStatus('Upload complete. Map updated.');
     }
     setUploadFiles([]);
+    setUploadTagText('');
     if (uploadInputRef.current) {
       uploadInputRef.current.value = '';
     }
@@ -654,6 +668,11 @@ function App() {
             <>
               <p className="section-subtitle">Select images with GPS metadata to place them on the map.</p>
               <input ref={uploadInputRef} type="file" multiple accept="image/*" onChange={(e) => handleFileChange(e.target.files)} />
+              <input
+                placeholder="함께한 친구 태그 (@username, @username)"
+                value={uploadTagText}
+                onChange={(e) => setUploadTagText(e.target.value)}
+              />
               <p className="section-subtitle">한 번에 최대 20장까지 업로드 가능. 업로드 후 다시 선택해 추가 업로드할 수 있어요.</p>
               <button className="upload-button" onClick={handleUpload} disabled={!uploadFiles.length}>Upload selected files</button>
               {uploadFiles.length > 0 && (

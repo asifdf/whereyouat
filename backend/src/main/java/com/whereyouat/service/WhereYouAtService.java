@@ -41,6 +41,7 @@ public class WhereYouAtService {
         this.jdbcTemplate = jdbcTemplate;
 
         ensureSchemaCompatibility();
+        cleanupLegacyDemoPins();
 
         if (userRepository.count() == 0) {
             initializeDemoData();
@@ -59,6 +60,19 @@ public class WhereYouAtService {
             jdbcTemplate.execute(sql);
         } catch (Exception ignored) {
             // Ignore when table/column does not exist yet in fresh environments.
+        }
+    }
+
+    private void cleanupLegacyDemoPins() {
+        runSafeUpdate("DELETE FROM pin_tagged_names WHERE pin_id IN ('pin-1', 'pin-2')");
+        runSafeUpdate("DELETE FROM pins WHERE id IN ('pin-1', 'pin-2')");
+    }
+
+    private void runSafeUpdate(String sql) {
+        try {
+            jdbcTemplate.update(sql);
+        } catch (Exception ignored) {
+            // Ignore when table does not exist yet in fresh environments.
         }
     }
 
@@ -261,9 +275,6 @@ public class WhereYouAtService {
         photoRepository.save(new PhotoEntity("photo-1", "강릉 바다", "https://images.unsplash.com/photo-1526772662000-3f88f10405ff?fit=crop&w=500&q=80", 37.7516, 129.1236, "여행 중에 찍은 바다 사진", me));
         photoRepository.save(new PhotoEntity("photo-2", "서울 한강", "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?fit=crop&w=500&q=80", 37.5194, 126.9390, "한강에서 피크닉", friend1));
         photoRepository.save(new PhotoEntity("photo-3", "제주 해변", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fit=crop&w=500&q=80", 33.4890, 126.4983, "제주도에서", friend2));
-
-        pinTagRepository.save(new PinTagEntity("pin-1", "소풍 장소", "여기에 민준이랑 함께 왔어요", 37.5194, 126.9390, List.of("민준", "지우"), LocalDateTime.now()));
-        pinTagRepository.save(new PinTagEntity("pin-2", "데이트 코스", "하늘이랑 함께한 추억", 33.4890, 126.4983, List.of("하늘"), LocalDateTime.now()));
 
         memoryRepository.save(new MemoryEntity("memory-1", me, "한강 벚꽃 드라이브", "봄바람과 함께한 하루입니다.", "https://images.unsplash.com/photo-1499346030926-9a72daac6c63?fit=crop&w=600&q=80", LocalDateTime.now().minusDays(1)));
         memoryRepository.save(new MemoryEntity("memory-2", me, "여름 바다", "함께한 여행이 정말 행복했어요.", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fit=crop&w=600&q=80", LocalDateTime.now().minusDays(5)));
