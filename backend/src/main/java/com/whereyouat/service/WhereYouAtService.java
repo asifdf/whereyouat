@@ -41,11 +41,7 @@ public class WhereYouAtService {
         this.jdbcTemplate = jdbcTemplate;
 
         ensureSchemaCompatibility();
-        cleanupLegacyDemoPins();
-
-        if (userRepository.count() == 0) {
-            initializeDemoData();
-        }
+        cleanupLegacyDemoData();
     }
 
     private void ensureSchemaCompatibility() {
@@ -63,9 +59,14 @@ public class WhereYouAtService {
         }
     }
 
-    private void cleanupLegacyDemoPins() {
+    private void cleanupLegacyDemoData() {
         runSafeUpdate("DELETE FROM pin_tagged_names WHERE pin_id IN ('pin-1', 'pin-2')");
         runSafeUpdate("DELETE FROM pins WHERE id IN ('pin-1', 'pin-2')");
+
+        runSafeUpdate("DELETE FROM memory_tags WHERE memory_id IN ('memory-1', 'memory-2')");
+        runSafeUpdate("DELETE FROM memories WHERE id IN ('memory-1', 'memory-2')");
+
+        runSafeUpdate("DELETE FROM photos WHERE id IN ('photo-1', 'photo-2', 'photo-3')");
     }
 
     private void runSafeUpdate(String sql) {
@@ -264,19 +265,4 @@ public class WhereYouAtService {
         return taggedUsers;
     }
 
-    private void initializeDemoData() {
-        UserEntity me = new UserEntity("user-1", "jiwoo", "지우", "https://i.pravatar.cc/80?img=32", hashPassword("pass123"));
-        UserEntity friend1 = new UserEntity("user-2", "minjun", "민준", "https://i.pravatar.cc/80?img=12", hashPassword("minjun"));
-        UserEntity friend2 = new UserEntity("user-3", "haneul", "하늘", "https://i.pravatar.cc/80?img=16", hashPassword("haneul"));
-        UserEntity friend3 = new UserEntity("user-4", "somin", "소민", "https://i.pravatar.cc/80?img=20", hashPassword("somin"));
-
-        userRepository.saveAll(List.of(me, friend1, friend2, friend3));
-
-        photoRepository.save(new PhotoEntity("photo-1", "강릉 바다", "https://images.unsplash.com/photo-1526772662000-3f88f10405ff?fit=crop&w=500&q=80", 37.7516, 129.1236, "여행 중에 찍은 바다 사진", me));
-        photoRepository.save(new PhotoEntity("photo-2", "서울 한강", "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?fit=crop&w=500&q=80", 37.5194, 126.9390, "한강에서 피크닉", friend1));
-        photoRepository.save(new PhotoEntity("photo-3", "제주 해변", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fit=crop&w=500&q=80", 33.4890, 126.4983, "제주도에서", friend2));
-
-        memoryRepository.save(new MemoryEntity("memory-1", me, "한강 벚꽃 드라이브", "봄바람과 함께한 하루입니다.", "https://images.unsplash.com/photo-1499346030926-9a72daac6c63?fit=crop&w=600&q=80", LocalDateTime.now().minusDays(1)));
-        memoryRepository.save(new MemoryEntity("memory-2", me, "여름 바다", "함께한 여행이 정말 행복했어요.", "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fit=crop&w=600&q=80", LocalDateTime.now().minusDays(5)));
-    }
 }

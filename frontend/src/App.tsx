@@ -128,7 +128,6 @@ function App() {
     fetchMarkers();
     fetch(`${API_BASE}/pins`).then((res) => res.json()).then(setPins);
     fetch(`${API_BASE}/memories`).then((res) => res.json()).then(setMemories);
-    fetch(`${API_BASE}/users/search?query=jiwoo`).then((res) => res.json()).then(setFriends);
   }, []);
 
   useEffect(() => {
