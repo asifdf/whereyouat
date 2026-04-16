@@ -4,7 +4,20 @@ import L from 'leaflet';
 import exifr from 'exifr';
 import { AuthResponse, PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com/api';
+const resolveApiBase = () => {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (apiUrl) {
+    const trimmed = apiUrl.trim().replace(/\/$/, '');
+    return /^https?:\/\//i.test(trimmed) ? `${trimmed}/api` : `https://${trimmed}/api`;
+  }
+
+  const base = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080/api';
+  const trimmedBase = base.trim().replace(/\/$/, '');
+  return trimmedBase.endsWith('/api') ? trimmedBase : `${trimmedBase}/api`;
+};
+
+const API_BASE = resolveApiBase();
+console.debug('whereyouat API_BASE =', API_BASE);
 const defaultPosition: [number, number] = [20, 0];
 
 const createIcon = (photoUrl: string, count: number) => {
@@ -249,7 +262,9 @@ function App() {
       : { username: authForm.username.trim(), password: authForm.password, name: authForm.name.trim() };
 
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const url = `${API_BASE}${endpoint}`;
+      console.debug('login/register request URL =', url);
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -267,8 +282,9 @@ function App() {
       setAuthMessage(`${authMode === 'login' ? '로그인' : '회원가입'} 성공: ${data.user.name}`);
       setAuthForm({ username: '', password: '', name: '' });
     } catch (err) {
-      console.error(err);
-      setAuthMessage('서버에 연결할 수 없습니다.');
+      console.error('Auth request failed', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setAuthMessage(`서버 연결 실패: ${errorMessage}`);
     }
   };
 
