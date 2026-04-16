@@ -10,37 +10,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 소스 코드 체크아웃
+      # 1. 소스 가져오기
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # 2. JDK 설정 (pom.xml이 21이면 반드시 21 맞춰야 함)
+      # 2. JDK 21 설정
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
+          cache: maven
 
-      # 3. Maven 캐시 (속도 개선)
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-
-      # 4. Maven 빌드 (fat jar 생성)
+      # 3. backend에서 빌드 (중요)
       - name: Build with Maven
+        working-directory: backend
         run: mvn clean package -DskipTests
 
-      # 5. artifact 준비 (EB 표준 구조)
+      # 4. EB 배포용 패키지 생성 (안정 구조)
       - name: Prepare deployment package
         run: |
           mkdir deploy
-          cp target/*.jar deploy/application.jar
+          cp backend/target/*.jar deploy/application.jar
           cd deploy
-          zip -r deployment.zip .
+          zip deployment.zip application.jar
 
-      # 6. AWS 인증
+      # 5. AWS 인증
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,22 +43,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-northeast-2
 
-      # 7. S3 업로드 (EB 기본 버킷 사용)
+      # 6. S3 업로드 (버전 충돌 방지 핵심)
       - name: Upload to S3
         run: |
           aws s3 cp deploy/deployment.zip \
-          s3://elasticbeanstalk-ap-northeast-2-${{ secrets.AWS_ACCOUNT_ID }}/deployment.zip
+          s3://elasticbeanstalk-ap-northeast-2-${{ secrets.AWS_ACCOUNT_ID }}/deployment-${{ github.sha }}.zip
 
-      # 8. EB Application Version 생성
-      - name: Create new EB version
+      # 7. EB Application Version 생성
+      - name: Create EB version
         run: |
           aws elasticbeanstalk create-application-version \
             --application-name whereyouat \
             --version-label v-${{ github.sha }} \
-            --source-bundle S3Bucket=elasticbeanstalk-ap-northeast-2-${{ secrets.AWS_ACCOUNT_ID }},S3Key=deployment.zip
+            --source-bundle S3Bucket=elasticbeanstalk-ap-northeast-2-${{ secrets.AWS_ACCOUNT_ID }},S3Key=deployment-${{ github.sha }}.zip
 
-      # 9. EB 환경 업데이트 (배포 실행)
-      - name: Deploy to Elastic Beanstalk
+      # 8. EB 배포
+      - name: Deploy to EB
         run: |
           aws elasticbeanstalk update-environment \
             --environment-name whereyouat-env \
