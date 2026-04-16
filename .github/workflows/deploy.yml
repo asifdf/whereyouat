@@ -32,8 +32,10 @@ jobs:
         run: |
           mkdir deploy
           cp backend/target/*.jar deploy/application.jar
+          cp Procfile deploy/Procfile
+          cp -R .ebextensions deploy/.ebextensions
           cd deploy
-          zip deployment.zip application.jar
+          zip -r deployment.zip application.jar Procfile .ebextensions
 
       # 5. AWS 인증
       - name: Configure AWS credentials
