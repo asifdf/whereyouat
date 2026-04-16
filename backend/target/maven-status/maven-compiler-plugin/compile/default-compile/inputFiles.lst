@@ -21,5 +21,6 @@
 /Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/model/PinTagEntity.java
 /Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/api/ApiController.java
 /Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/model/RegisterRequest.java
+/Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/api/HealthController.java
 /Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/WhereYouAtApplication.java
 /Users/seoeunsu/Downloads/whereyouat/backend/src/main/java/com/whereyouat/repository/UserRepository.java
