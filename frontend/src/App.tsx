@@ -5,6 +5,23 @@ import exifr from 'exifr';
 import { AuthResponse, PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
 
 const resolveApiBase = () => {
+  const forceHttpsIfNeeded = (url: string) => {
+    if (typeof window === 'undefined') return url;
+    if (window.location.protocol !== 'https:') return url;
+
+    try {
+      const parsed = new URL(url);
+      const isLocalHost = ['localhost', '127.0.0.1'].includes(parsed.hostname);
+      if (parsed.protocol === 'http:' && !isLocalHost) {
+        parsed.protocol = 'https:';
+        return parsed.toString().replace(/\/$/, '');
+      }
+      return parsed.toString().replace(/\/$/, '');
+    } catch {
+      return url;
+    }
+  };
+
   const apiUrl = import.meta.env.VITE_API_URL;
 
   if (apiUrl) {
@@ -13,20 +30,23 @@ const resolveApiBase = () => {
       ? trimmed
       : `https://${trimmed}`;
 
-    return withProtocol.endsWith('/api')
-      ? withProtocol
-      : `${withProtocol}/api`;
+    const normalized = forceHttpsIfNeeded(withProtocol);
+
+    return normalized.endsWith('/api')
+      ? normalized
+      : `${normalized}/api`;
   }
 
   const base =
     import.meta.env.VITE_API_BASE ??
-    'http://whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com';
+    'https://whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com';
 
   const trimmedBase = base.trim().replace(/\/$/, '');
+  const normalizedBase = forceHttpsIfNeeded(trimmedBase);
 
-  return trimmedBase.endsWith('/api')
-    ? trimmedBase
-    : `${trimmedBase}/api`;
+  return normalizedBase.endsWith('/api')
+    ? normalizedBase
+    : `${normalizedBase}/api`;
 };
 
 const API_BASE = resolveApiBase();
