@@ -614,6 +614,11 @@ function App() {
   return (
     <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
+        <div className="panel-dock">
+          <strong>Control Panel</strong>
+          <button className="link-button" onClick={() => setSidebarCollapsed(true)}>패널 접기</button>
+        </div>
+
         <div className="section auth-section">
           <div className="section-header">
             <h2>{currentUser ? '내 계정' : authMode === 'login' ? '로그인' : '회원가입'}</h2>
@@ -835,6 +840,10 @@ function App() {
           </section>
         )}
       </main>
+
+      <button className="panel-fab" onClick={() => setSidebarCollapsed((v) => !v)}>
+        {sidebarCollapsed ? '패널 열기' : '패널 접기'}
+      </button>
     </div>
   );
 }
