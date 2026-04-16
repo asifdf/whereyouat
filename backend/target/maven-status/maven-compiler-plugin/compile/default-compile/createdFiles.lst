@@ -1,0 +1,13 @@
+com/whereyouat/model/MemoryPost.class
+com/whereyouat/api/ApiController.class
+com/whereyouat/WhereYouAtApplication.class
+com/whereyouat/model/UserSummary.class
+com/whereyouat/model/PhotoGroup.class
+com/whereyouat/service/WhereYouAtService.class
+com/whereyouat/model/FollowerResponse.class
+com/whereyouat/model/PinTagCreate.class
+com/whereyouat/model/PhotoItem.class
+com/whereyouat/model/PinTag.class
+com/whereyouat/model/MemoryCreate.class
+com/whereyouat/model/PhotoUpload.class
+com/whereyouat/model/User.class
