@@ -127,25 +127,57 @@ function App() {
 
   const dataUrlFromFile = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        const MAX = 800;
-        let { width, height } = img;
-        if (width > MAX || height > MAX) {
-          if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
-          else { width = Math.round(width * MAX / height); height = MAX; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-      img.onerror = reject;
-      img.src = objectUrl;
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
+  };
+
+  const uploadPhotoInChunks = async (file: File, coords: { latitude: number; longitude: number }) => {
+    const imageUrl = await dataUrlFromFile(file);
+    const chunkSize = 1024 * 1024;
+    const totalChunks = Math.ceil(imageUrl.length / chunkSize);
+    const uploadId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    for (let index = 0; index < totalChunks; index += 1) {
+      const start = index * chunkSize;
+      const end = start + chunkSize;
+      const chunkData = imageUrl.slice(start, end);
+
+      const chunkResponse = await fetch(`${API_BASE}/photos/chunk`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadId,
+          title: file.name,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          description: 'Uploaded from map uploader',
+          chunkIndex: index,
+          totalChunks,
+          chunkData,
+        }),
+      });
+
+      if (!chunkResponse.ok) {
+        const errorText = await chunkResponse.text();
+        throw new Error(errorText || 'Chunk upload failed');
+      }
+    }
+
+    const completeResponse = await fetch(`${API_BASE}/photos/chunk/complete`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uploadId }),
+    });
+
+    if (!completeResponse.ok) {
+      const errorText = await completeResponse.text();
+      throw new Error(errorText || 'Failed to complete upload');
+    }
   };
 
   const handleUpload = async () => {
@@ -162,28 +194,11 @@ function App() {
           if (!coords) {
             return { status: 'failed', file: file.name, reason: 'No GPS metadata' };
           }
-          const imageUrl = await dataUrlFromFile(file);
-          const payload = {
-            title: file.name,
-            imageUrl,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            description: 'Uploaded from map uploader',
-          };
-          const response = await fetch(`${API_BASE}/photos`, {
-            method: 'POST',
-            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            return { status: 'failed', file: file.name, reason: errorText || 'Upload failed' };
-          }
+          await uploadPhotoInChunks(file, coords);
           return { status: 'ok', file: file.name };
         } catch (err) {
           console.error(err);
-          return { status: 'failed', file: file.name, reason: 'Upload error' };
+          return { status: 'failed', file: file.name, reason: err instanceof Error ? err.message : 'Upload error' };
         }
       })
     );
