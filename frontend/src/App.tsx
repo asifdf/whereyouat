@@ -82,7 +82,8 @@ function App() {
   const pinMarkersRef = useRef<any[]>([]);
   const nearbyMarkersRef = useRef<any[]>([]);
 
-  const activeMarkers = friendMapOwner ? friendMapMarkers : markers;
+  const canViewMapData = Boolean(authToken);
+  const activeMarkers = canViewMapData ? (friendMapOwner ? friendMapMarkers : markers) : [];
 
   const getAuthHeaders = () => {
     const headers: Record<string, string> = {};
@@ -125,10 +126,20 @@ function App() {
   };
 
   useEffect(() => {
+    if (!authToken) {
+      setMarkers([]);
+      setPins([]);
+      setMemories([]);
+      setFriendMapOwner(null);
+      setFriendMapMarkers([]);
+      setSelectedMarker(null);
+      return;
+    }
+
     fetchMarkers();
     fetch(`${API_BASE}/pins`).then((res) => res.json()).then(setPins);
     fetch(`${API_BASE}/memories`).then((res) => res.json()).then(setMemories);
-  }, []);
+  }, [authToken]);
 
   useEffect(() => {
     const initMap = () => {
@@ -483,6 +494,11 @@ function App() {
   };
 
   const fetchFriendMap = async () => {
+    if (!authToken) {
+      setFriendMapMessage('친구 지도를 보려면 먼저 로그인하세요.');
+      return;
+    }
+
     setFriendMapMessage('');
     setFriendMapOwner(null);
     setFriendMapMarkers([]);
@@ -577,6 +593,12 @@ function App() {
     setAuthToken(null);
     setCurrentUser(null);
     setFollowing([]);
+    setMarkers([]);
+    setPins([]);
+    setMemories([]);
+    setFriendMapOwner(null);
+    setFriendMapMarkers([]);
+    setSelectedMarker(null);
     setAuthMessage('로그아웃되었습니다.');
   };
 
