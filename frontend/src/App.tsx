@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import exifr from 'exifr';
-import { AuthResponse, PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
+import { AuthResponse, MemoryPost, PhotoMarker, PinTag, UserSummary } from './types';
 
 declare global {
   interface Window {
@@ -28,9 +28,7 @@ const resolveApiBase = () => {
   const apiUrl = import.meta.env.VITE_API_URL;
   if (apiUrl) {
     const trimmed = apiUrl.trim().replace(/\/$/, '');
-    const withProtocol = /^https?:\/\//i.test(trimmed)
-      ? trimmed
-      : `https://${trimmed}`;
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     const normalized = forceHttpsIfNeeded(withProtocol);
     return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
   }
@@ -44,11 +42,10 @@ const resolveApiBase = () => {
 };
 
 const API_BASE = resolveApiBase();
-console.debug('whereyouat API_BASE =', API_BASE);
 const defaultPosition: [number, number] = [20, 0];
+const MAX_UPLOAD_FILES = 20;
 const GOOGLE_MAPS_API_KEY =
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY ??
-  'AIzaSyAXIiweoh5AHCHbA_BRiiZyX5_jVe6c-b4';
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? 'AIzaSyAXIiweoh5AHCHbA_BRiiZyX5_jVe6c-b4';
 
 function App() {
   const [markers, setMarkers] = useState<PhotoMarker[]>([]);
@@ -75,12 +72,56 @@ function App() {
   const [authMessage, setAuthMessage] = useState('');
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
+
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const googleMapRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
   const photoMarkersRef = useRef<any[]>([]);
   const pinMarkersRef = useRef<any[]>([]);
   const nearbyMarkersRef = useRef<any[]>([]);
+
+  const activeMarkers = friendMapOwner ? friendMapMarkers : markers;
+
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    return headers;
+  };
+
+  const focusMapToGroups = (groups: PhotoMarker[]) => {
+    const google = (window as any).google;
+    const map = googleMapRef.current;
+    if (!map || !google?.maps || !groups.length) {
+      return;
+    }
+
+    if (groups.length === 1) {
+      map.setCenter({ lat: groups[0].latitude, lng: groups[0].longitude });
+      map.setZoom(12);
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+    groups.forEach((group) => bounds.extend({ lat: group.latitude, lng: group.longitude }));
+    map.fitBounds(bounds);
+  };
+
+  const fetchMarkers = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/map`);
+      if (!response.ok) {
+        throw new Error('Unable to fetch map markers');
+      }
+      const data = await response.json();
+      setMarkers(data);
+    } catch (error) {
+      console.error(error);
+      setUploadStatus('Failed to load map markers.');
+    }
+  };
 
   useEffect(() => {
     fetchMarkers();
@@ -101,7 +142,10 @@ function App() {
         center: { lat: defaultPosition[0], lng: defaultPosition[1] },
         gestureHandling: 'greedy',
         mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
       });
+
       googleMapRef.current = map;
       infoWindowRef.current = new google.maps.InfoWindow();
       setMapReady(true);
@@ -132,7 +176,7 @@ function App() {
                 icon: {
                   path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
                   scale: 5,
-                  fillColor: '#1a73e8',
+                  fillColor: '#111111',
                   fillOpacity: 0.9,
                   strokeColor: '#ffffff',
                   strokeWeight: 1,
@@ -192,7 +236,7 @@ function App() {
     photoMarkersRef.current = [];
     pinMarkersRef.current = [];
 
-    markers.forEach((group) => {
+    activeMarkers.forEach((group) => {
       const marker = new google.maps.Marker({
         map,
         position: { lat: group.latitude, lng: group.longitude },
@@ -217,31 +261,46 @@ function App() {
       photoMarkersRef.current.push(marker);
     });
 
-    pins.forEach((pin) => {
-      const marker = new google.maps.Marker({
-        map,
-        position: { lat: pin.latitude, lng: pin.longitude },
-        title: pin.title,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: '#ff5722',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-        },
-      });
+    if (!friendMapOwner) {
+      pins.forEach((pin) => {
+        const marker = new google.maps.Marker({
+          map,
+          position: { lat: pin.latitude, lng: pin.longitude },
+          title: pin.title,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#ef4444',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+          },
+        });
 
-      marker.addListener('click', () => {
-        infoWindowRef.current?.setContent(
-          `<div><strong>${pin.title}</strong><br/>${pin.description}</div>`
-        );
-        infoWindowRef.current?.open({ map, anchor: marker });
-      });
+        marker.addListener('click', () => {
+          infoWindowRef.current?.setContent(`<div><strong>${pin.title}</strong><br/>${pin.description}</div>`);
+          infoWindowRef.current?.open({ map, anchor: marker });
+        });
 
-      pinMarkersRef.current.push(marker);
-    });
-  }, [mapReady, markers, pins]);
+        pinMarkersRef.current.push(marker);
+      });
+    }
+  }, [mapReady, activeMarkers, pins, friendMapOwner]);
+
+  useEffect(() => {
+    if (mapReady) {
+      focusMapToGroups(activeMarkers);
+    }
+  }, [mapReady, friendMapOwner, activeMarkers.length]);
+
+  useEffect(() => {
+    const google = (window as any).google;
+    const map = googleMapRef.current;
+    if (!mapReady || !map || !google?.maps || !selectedMarker) {
+      return;
+    }
+    map.panTo({ lat: selectedMarker.latitude, lng: selectedMarker.longitude });
+  }, [mapReady, selectedMarker]);
 
   useEffect(() => {
     if (currentUser) {
@@ -251,24 +310,10 @@ function App() {
     }
   }, [currentUser]);
 
-  const fetchMarkers = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/map`);
-      if (!response.ok) {
-        throw new Error('Unable to fetch map markers');
-      }
-      const data = await response.json();
-      setMarkers(data);
-    } catch (error) {
-      console.error(error);
-      setUploadStatus('Failed to load map markers.');
-    }
-  };
-
   const filteredFriends = useMemo(() => {
     const lower = search.toLowerCase();
-    return friends.filter((friend) =>
-      friend.name.toLowerCase().includes(lower) || friend.username.toLowerCase().includes(lower)
+    return friends.filter(
+      (friend) => friend.name.toLowerCase().includes(lower) || friend.username.toLowerCase().includes(lower)
     );
   }, [friends, search]);
 
@@ -293,9 +338,10 @@ function App() {
     const imageUrl = await dataUrlFromFile(file);
     const chunkSize = 1024 * 1024;
     const totalChunks = Math.ceil(imageUrl.length / chunkSize);
-    const uploadId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const uploadId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     for (let index = 0; index < totalChunks; index += 1) {
       const start = index * chunkSize;
@@ -353,25 +399,39 @@ function App() {
           return { status: 'ok', file: file.name };
         } catch (err) {
           console.error(err);
-          return { status: 'failed', file: file.name, reason: err instanceof Error ? err.message : 'Upload error' };
+          return {
+            status: 'failed',
+            file: file.name,
+            reason: err instanceof Error ? err.message : 'Upload error',
+          };
         }
       })
     );
 
     const failed = results.filter((item) => item.status === 'failed');
     if (failed.length) {
-      setUploadStatus(`${failed.length} photos failed: ${failed.map((item) => `${item.file} (${item.reason})`).join(', ')}`);
+      setUploadStatus(
+        `${failed.length} photos failed: ${failed.map((item) => `${item.file} (${item.reason})`).join(', ')}`
+      );
     } else {
       setUploadStatus('Upload complete. Map updated.');
     }
     setUploadFiles([]);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = '';
+    }
     await fetchMarkers();
   };
 
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
-    setUploadFiles(Array.from(files));
-    setUploadStatus(`${files.length} files selected`);
+    const selected = Array.from(files).slice(0, MAX_UPLOAD_FILES);
+    setUploadFiles(selected);
+    if (files.length > MAX_UPLOAD_FILES) {
+      setUploadStatus(`한 번에 최대 ${MAX_UPLOAD_FILES}장만 가능해요. 앞의 ${MAX_UPLOAD_FILES}장만 선택했어요.`);
+      return;
+    }
+    setUploadStatus(`${selected.length} files selected`);
   };
 
   const addPin = async () => {
@@ -408,14 +468,6 @@ function App() {
     setNewMemory({ title: '', body: '', photoUrl: '' });
   };
 
-  const getAuthHeaders = () => {
-    const headers: Record<string, string> = {};
-    if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
-    }
-    return headers;
-  };
-
   const fetchFriendMap = async () => {
     setFriendMapMessage('');
     setFriendMapOwner(null);
@@ -444,11 +496,22 @@ function App() {
       setFriendMapMarkers(data);
       if (!data.length) {
         setFriendMapMessage('친구의 지도에는 아직 사진이 없습니다.');
+        setSelectedMarker(null);
+        return;
       }
+      setSelectedMarker(data[0]);
+      focusMapToGroups(data);
     } catch (err) {
       console.error(err);
       setFriendMapMessage('서버에서 친구 데이터를 불러올 수 없습니다.');
     }
+  };
+
+  const clearFriendMap = () => {
+    setFriendMapOwner(null);
+    setFriendMapMarkers([]);
+    setFriendMapMessage('전체 지도로 돌아왔습니다.');
+    setSelectedMarker(null);
   };
 
   const fetchFollowing = async (userId: string) => {
@@ -465,13 +528,13 @@ function App() {
   const handleAuthSubmit = async () => {
     setAuthMessage('');
     const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
-    const payload = authMode === 'login'
-      ? { username: authForm.username.trim(), password: authForm.password }
-      : { username: authForm.username.trim(), password: authForm.password, name: authForm.name.trim() };
+    const payload =
+      authMode === 'login'
+        ? { username: authForm.username.trim(), password: authForm.password }
+        : { username: authForm.username.trim(), password: authForm.password, name: authForm.name.trim() };
 
     try {
       const url = `${API_BASE}${endpoint}`;
-      console.debug('login/register request URL =', url);
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -574,9 +637,7 @@ function App() {
                 value={authForm.password}
                 onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
               />
-              <button onClick={handleAuthSubmit}>
-                {authMode === 'login' ? '로그인' : '회원가입'}
-              </button>
+              <button onClick={handleAuthSubmit}>{authMode === 'login' ? '로그인' : '회원가입'}</button>
               {authMessage && <p className="status-text">{authMessage}</p>}
             </div>
           )}
@@ -592,10 +653,9 @@ function App() {
           {uploadVisible ? (
             <>
               <p className="section-subtitle">Select images with GPS metadata to place them on the map.</p>
-              <input type="file" multiple accept="image/*" onChange={(e) => handleFileChange(e.target.files)} />
-              <button className="upload-button" onClick={handleUpload} disabled={!uploadFiles.length}>
-                Upload selected files
-              </button>
+              <input ref={uploadInputRef} type="file" multiple accept="image/*" onChange={(e) => handleFileChange(e.target.files)} />
+              <p className="section-subtitle">한 번에 최대 20장까지 업로드 가능. 업로드 후 다시 선택해 추가 업로드할 수 있어요.</p>
+              <button className="upload-button" onClick={handleUpload} disabled={!uploadFiles.length}>Upload selected files</button>
               {uploadFiles.length > 0 && (
                 <div className="selected-files">
                   {uploadFiles.map((file) => (
@@ -636,10 +696,11 @@ function App() {
 
         <div className="section">
           <h2>Friend Map</h2>
-          <p className="section-subtitle">친구 username을 입력하면 친구의 map 사진을 볼 수 있습니다.</p>
+          <p className="section-subtitle">친구 username을 입력하면 친구 전용 지도가 표시됩니다.</p>
           <div className="search-row">
             <input value={friendMapUsername} onChange={(e) => setFriendMapUsername(e.target.value)} placeholder="Enter friend username" />
-            <button onClick={fetchFriendMap}>Load map</button>
+            <button onClick={fetchFriendMap}>친구 지도 불러오기</button>
+            {friendMapOwner && <button onClick={clearFriendMap}>전체 지도 보기</button>}
           </div>
           {friendMapMessage && <p className="status-text">{friendMapMessage}</p>}
           {friendMapOwner && (
@@ -649,29 +710,35 @@ function App() {
             </div>
           )}
           <div className="friend-list">
-            {friendMapMarkers.length ? friendMapMarkers.map((group, index) => (
-              <div key={`${group.latitude}-${group.longitude}-${index}`} className="friend-card">
-                <div>
-                  <p>{group.photos.length} Photos at {group.latitude.toFixed(3)}, {group.longitude.toFixed(3)}</p>
-                  <small>Coordinates</small>
-                </div>
-                <button onClick={() => setSelectedMarker(group)}>View on map</button>
-              </div>
-            )) : (friendMapOwner ? <p className="section-subtitle">친구의 사진 그룹이 없습니다.</p> : null)}
+            {friendMapMarkers.length
+              ? friendMapMarkers.map((group, index) => (
+                  <div key={`${group.latitude}-${group.longitude}-${index}`} className="friend-card">
+                    <div>
+                      <p>{group.photos.length} Photos at {group.latitude.toFixed(3)}, {group.longitude.toFixed(3)}</p>
+                      <small>Coordinates</small>
+                    </div>
+                    <button onClick={() => setSelectedMarker(group)}>View on map</button>
+                  </div>
+                ))
+              : friendMapOwner
+                ? <p className="section-subtitle">친구의 사진 그룹이 없습니다.</p>
+                : null}
           </div>
         </div>
 
         <div className="section">
           <h2>Following</h2>
-          {following.length ? following.map((user) => (
-            <div key={user.id} className="friend-card">
-              <img src={user.avatarUrl} alt={user.name} />
-              <div>
-                <p>{user.name}</p>
-                <small>{user.followers} followers</small>
-              </div>
-            </div>
-          )) : <p>{authToken ? 'No following users yet.' : '로그인 후 팔로우를 시작하세요.'}</p>}
+          {following.length
+            ? following.map((user) => (
+                <div key={user.id} className="friend-card">
+                  <img src={user.avatarUrl} alt={user.name} />
+                  <div>
+                    <p>{user.name}</p>
+                    <small>{user.followers} followers</small>
+                  </div>
+                </div>
+              ))
+            : <p>{authToken ? 'No following users yet.' : '로그인 후 팔로우를 시작하세요.'}</p>}
         </div>
 
         <div className="section">
@@ -724,14 +791,15 @@ function App() {
         <div className="map-topbar">
           <div>
             <h1>WhereYouAt</h1>
-            <p>Global map loaded in English style. Upload photos and pin favorite moments.</p>
+            <p>{friendMapOwner ? `@${friendMapOwner.username}의 지도` : 'Global map loaded in Google Maps style.'}</p>
           </div>
           <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((v) => !v)}>
             {sidebarCollapsed ? '패널 열기' : '패널 접기'}
           </button>
         </div>
+
         <div ref={mapRef} className="map-container" />
-        {mapError && <p className="status-text" style={{ padding: '10px 26px' }}>{mapError}</p>}
+        {mapError && <p className="status-text" style={{ padding: '10px 20px' }}>{mapError}</p>}
 
         {selectedMarker && (
           <section className="marker-details">
@@ -744,9 +812,7 @@ function App() {
                 </div>
               ))}
             </div>
-            <button className="close-button" onClick={() => setSelectedMarker(null)}>
-              Close
-            </button>
+            <button className="close-button" onClick={() => setSelectedMarker(null)}>Close</button>
           </section>
         )}
       </main>
