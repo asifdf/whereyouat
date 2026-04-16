@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, CircleMarker } from 'react-leaflet';
-import L from 'leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import exifr from 'exifr';
 import { AuthResponse, PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
+
+declare global {
+  interface Window {
+    initWhereYouAtMap?: () => void;
+  }
+}
 
 const resolveApiBase = () => {
   const forceHttpsIfNeeded = (url: string) => {
@@ -42,21 +46,9 @@ const resolveApiBase = () => {
 const API_BASE = resolveApiBase();
 console.debug('whereyouat API_BASE =', API_BASE);
 const defaultPosition: [number, number] = [20, 0];
-
-const createIcon = (photoUrl: string, count: number) => {
-  return L.divIcon({
-    className: 'photo-marker',
-    html: `
-      <div class="photo-marker-inner">
-        <img src="${photoUrl}" alt="photo" />
-        ${count > 1 ? `<div class="badge">${count}</div>` : ''}
-      </div>
-    `,
-    iconSize: [60, 60],
-    iconAnchor: [30, 60],
-    popupAnchor: [0, -60],
-  });
-};
+const GOOGLE_MAPS_API_KEY =
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY ??
+  'AIzaSyAXIiweoh5AHCHbA_BRiiZyX5_jVe6c-b4';
 
 function App() {
   const [markers, setMarkers] = useState<PhotoMarker[]>([]);
@@ -81,6 +73,14 @@ function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authForm, setAuthForm] = useState({ username: '', password: '', name: '' });
   const [authMessage, setAuthMessage] = useState('');
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState('');
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const googleMapRef = useRef<any>(null);
+  const infoWindowRef = useRef<any>(null);
+  const photoMarkersRef = useRef<any[]>([]);
+  const pinMarkersRef = useRef<any[]>([]);
+  const nearbyMarkersRef = useRef<any[]>([]);
 
   useEffect(() => {
     fetchMarkers();
@@ -88,6 +88,160 @@ function App() {
     fetch(`${API_BASE}/memories`).then((res) => res.json()).then(setMemories);
     fetch(`${API_BASE}/users/search?query=jiwoo`).then((res) => res.json()).then(setFriends);
   }, []);
+
+  useEffect(() => {
+    const initMap = () => {
+      if (!mapRef.current || !(window as any).google?.maps) {
+        return;
+      }
+
+      const google = (window as any).google;
+      const map = new google.maps.Map(mapRef.current, {
+        zoom: 2,
+        center: { lat: defaultPosition[0], lng: defaultPosition[1] },
+        gestureHandling: 'greedy',
+        mapTypeControl: false,
+      });
+      googleMapRef.current = map;
+      infoWindowRef.current = new google.maps.InfoWindow();
+      setMapReady(true);
+
+      if (google.maps.places) {
+        const service = new google.maps.places.PlacesService(map);
+        service.nearbySearch(
+          {
+            location: { lat: 37.5665, lng: 126.9780 },
+            radius: 1000,
+            type: 'restaurant',
+          },
+          (results: any[] | null, status: string) => {
+            if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
+              return;
+            }
+
+            nearbyMarkersRef.current.forEach((m) => m.setMap(null));
+            nearbyMarkersRef.current = [];
+
+            results.slice(0, 12).forEach((place: any) => {
+              if (!place.geometry?.location) {
+                return;
+              }
+              const marker = new google.maps.Marker({
+                map,
+                position: place.geometry.location,
+                icon: {
+                  path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                  scale: 5,
+                  fillColor: '#1a73e8',
+                  fillOpacity: 0.9,
+                  strokeColor: '#ffffff',
+                  strokeWeight: 1,
+                },
+              });
+
+              marker.addListener('click', () => {
+                infoWindowRef.current?.setContent(
+                  `<div><strong>${place.name ?? 'Nearby place'}</strong><br/>${place.vicinity ?? ''}</div>`
+                );
+                infoWindowRef.current?.open({ map, anchor: marker });
+              });
+
+              nearbyMarkersRef.current.push(marker);
+            });
+          }
+        );
+      }
+    };
+
+    if ((window as any).google?.maps) {
+      initMap();
+      return;
+    }
+
+    const existing = document.getElementById('google-maps-script');
+    if (existing) {
+      (window as any).initWhereYouAtMap = initMap;
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-maps-script';
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=initWhereYouAtMap`;
+    script.onerror = () => {
+      setMapError('Google Maps를 불러오지 못했습니다. API key 설정을 확인하세요.');
+    };
+    (window as any).initWhereYouAtMap = initMap;
+    document.head.appendChild(script);
+
+    return () => {
+      delete (window as any).initWhereYouAtMap;
+    };
+  }, []);
+
+  useEffect(() => {
+    const google = (window as any).google;
+    const map = googleMapRef.current;
+    if (!mapReady || !map || !google?.maps) {
+      return;
+    }
+
+    photoMarkersRef.current.forEach((m) => m.setMap(null));
+    pinMarkersRef.current.forEach((m) => m.setMap(null));
+    photoMarkersRef.current = [];
+    pinMarkersRef.current = [];
+
+    markers.forEach((group) => {
+      const marker = new google.maps.Marker({
+        map,
+        position: { lat: group.latitude, lng: group.longitude },
+        title: group.photos[0]?.title ?? 'Photo',
+        icon: group.photos[0]?.imageUrl
+          ? {
+              url: group.photos[0].imageUrl,
+              scaledSize: new google.maps.Size(54, 54),
+            }
+          : undefined,
+      });
+
+      marker.addListener('click', () => {
+        setSelectedMarker(group);
+        const first = group.photos[0];
+        infoWindowRef.current?.setContent(
+          `<div><strong>${first?.title ?? 'Photo'}</strong><br/>${first?.description ?? ''}</div>`
+        );
+        infoWindowRef.current?.open({ map, anchor: marker });
+      });
+
+      photoMarkersRef.current.push(marker);
+    });
+
+    pins.forEach((pin) => {
+      const marker = new google.maps.Marker({
+        map,
+        position: { lat: pin.latitude, lng: pin.longitude },
+        title: pin.title,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: '#ff5722',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+      });
+
+      marker.addListener('click', () => {
+        infoWindowRef.current?.setContent(
+          `<div><strong>${pin.title}</strong><br/>${pin.description}</div>`
+        );
+        infoWindowRef.current?.open({ map, anchor: marker });
+      });
+
+      pinMarkersRef.current.push(marker);
+    });
+  }, [mapReady, markers, pins]);
 
   useEffect(() => {
     if (currentUser) {
@@ -576,41 +730,8 @@ function App() {
             {sidebarCollapsed ? '패널 열기' : '패널 접기'}
           </button>
         </div>
-        <MapContainer center={defaultPosition} zoom={2} scrollWheelZoom className="map-container">
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            attribution="&copy; OpenStreetMap contributors &copy; CARTO"
-          />
-          {markers.map((marker) => (
-            <Marker
-              key={`${marker.latitude}-${marker.longitude}`}
-              position={[marker.latitude, marker.longitude]}
-              icon={createIcon(marker.photos[0].imageUrl, marker.photos.length)}
-              eventHandlers={{ click: () => setSelectedMarker(marker) }}
-            >
-              <Popup>
-                <div className="popup-card">
-                  <strong>{marker.photos[0].title}</strong>
-                  <p>{marker.photos[0].description}</p>
-                  <div className="popup-images">
-                    {marker.photos.map((photo) => (
-                      <img key={photo.id} src={photo.imageUrl} alt={photo.title} />
-                    ))}
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-          {pins.map((pin) => (
-            <CircleMarker key={pin.id} center={[pin.latitude, pin.longitude]} radius={12} pathOptions={{ color: '#ff5722' }}>
-              <Popup>
-                <strong>{pin.title}</strong>
-                <p>{pin.description}</p>
-                <small>Tagged: {pin.taggedNames.join(', ')}</small>
-              </Popup>
-            </CircleMarker>
-          ))}
-        </MapContainer>
+        <div ref={mapRef} className="map-container" />
+        {mapError && <p className="status-text" style={{ padding: '10px 26px' }}>{mapError}</p>}
 
         {selectedMarker && (
           <section className="marker-details">
