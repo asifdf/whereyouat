@@ -4,7 +4,7 @@ import L from 'leaflet';
 import exifr from 'exifr';
 import { PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'WherEYOUAT-env-1.eba-9r3y67qk.ap-northeast-2.elasticbeanstalk.com/api';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com//api';
 const defaultPosition: [number, number] = [20, 0];
 
 const createIcon = (photoUrl: string, count: number) => {
