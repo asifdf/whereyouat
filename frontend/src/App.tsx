@@ -244,7 +244,7 @@ function App() {
         icon: group.photos[0]?.imageUrl
           ? {
               url: group.photos[0].imageUrl,
-              scaledSize: new google.maps.Size(54, 54),
+              scaledSize: new google.maps.Size(84, 56),
             }
           : undefined,
       });
