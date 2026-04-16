@@ -17,6 +17,11 @@ export interface UserSummary {
   following: number;
 }
 
+export interface AuthResponse {
+  token: string;
+  user: UserSummary;
+}
+
 export interface PinTag {
   id: string;
   title: string;

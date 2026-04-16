@@ -1,21 +1,42 @@
 package com.whereyouat.model;
 
+import jakarta.persistence.*;
 import java.util.HashSet;
 import java.util.Set;
 
-public class User {
+@Entity
+@Table(name = "users")
+public class UserEntity {
+    @Id
+    @Column(length = 36)
     private String id;
-    private String username;
-    private String name;
-    private String avatarUrl;
-    private String passwordHash;
-    private Set<String> followers = new HashSet<>();
-    private Set<String> following = new HashSet<>();
 
-    public User() {
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(nullable = false)
+    private String name;
+
+    private String avatarUrl;
+
+    @Column(nullable = false)
+    private String passwordHash;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "user_following",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "following_user_id")
+    )
+    private Set<UserEntity> following = new HashSet<>();
+
+    @ManyToMany(mappedBy = "following", fetch = FetchType.LAZY)
+    private Set<UserEntity> followers = new HashSet<>();
+
+    public UserEntity() {
     }
 
-    public User(String id, String username, String name, String avatarUrl, String passwordHash) {
+    public UserEntity(String id, String username, String name, String avatarUrl, String passwordHash) {
         this.id = id;
         this.username = username;
         this.name = name;
@@ -43,11 +64,11 @@ public class User {
         return passwordHash;
     }
 
-    public Set<String> getFollowers() {
+    public Set<UserEntity> getFollowers() {
         return followers;
     }
 
-    public Set<String> getFollowing() {
+    public Set<UserEntity> getFollowing() {
         return following;
     }
 
@@ -71,11 +92,11 @@ public class User {
         this.passwordHash = passwordHash;
     }
 
-    public void setFollowers(Set<String> followers) {
+    public void setFollowers(Set<UserEntity> followers) {
         this.followers = followers;
     }
 
-    public void setFollowing(Set<String> following) {
+    public void setFollowing(Set<UserEntity> following) {
         this.following = following;
     }
 }

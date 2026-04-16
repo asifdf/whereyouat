@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Popup, TileLayer, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 import exifr from 'exifr';
-import { PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
+import { AuthResponse, PhotoMarker, UserSummary, PinTag, MemoryPost } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com//api';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com/api';
 const defaultPosition: [number, number] = [20, 0];
 
 const createIcon = (photoUrl: string, count: number) => {
@@ -29,12 +29,21 @@ function App() {
   const [pins, setPins] = useState<PinTag[]>([]);
   const [memories, setMemories] = useState<MemoryPost[]>([]);
   const [search, setSearch] = useState('');
-  const [friendQuery, setFriendQuery] = useState('');
   const [selectedMarker, setSelectedMarker] = useState<PhotoMarker | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadStatus, setUploadStatus] = useState('');
   const [newPin, setNewPin] = useState({ title: '', description: '', latitude: '', longitude: '', taggedNames: '' });
   const [newMemory, setNewMemory] = useState({ title: '', body: '', photoUrl: '' });
+  const [friendMapId, setFriendMapId] = useState('');
+  const [friendMapOwner, setFriendMapOwner] = useState<UserSummary | null>(null);
+  const [friendMapMarkers, setFriendMapMarkers] = useState<PhotoMarker[]>([]);
+  const [friendMapMessage, setFriendMapMessage] = useState('');
+  const [uploadVisible, setUploadVisible] = useState(true);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserSummary | null>(null);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authForm, setAuthForm] = useState({ username: '', password: '', name: '' });
+  const [authMessage, setAuthMessage] = useState('');
 
   useEffect(() => {
     fetchMarkers();
@@ -42,6 +51,14 @@ function App() {
     fetch(`${API_BASE}/memories`).then((res) => res.json()).then(setMemories);
     fetch(`${API_BASE}/users/search?query=jiwoo`).then((res) => res.json()).then(setFriends);
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchFollowing(currentUser.id);
+    } else {
+      setFollowing([]);
+    }
+  }, [currentUser]);
 
   const fetchMarkers = async () => {
     try {
@@ -58,8 +75,11 @@ function App() {
   };
 
   const filteredFriends = useMemo(() => {
-    return friends.filter((friend) => friend.name.toLowerCase().includes(friendQuery.toLowerCase()));
-  }, [friends, friendQuery]);
+    const lower = search.toLowerCase();
+    return friends.filter((friend) =>
+      friend.name.toLowerCase().includes(lower) || friend.id.toLowerCase().includes(lower)
+    );
+  }, [friends, search]);
 
   const parseGpsFromFile = async (file: File) => {
     const gps = await exifr.gps(file);
@@ -102,7 +122,7 @@ function App() {
           };
           const response = await fetch(`${API_BASE}/photos`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
 
@@ -160,7 +180,7 @@ function App() {
     };
     const res = await fetch(`${API_BASE}/memories`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const created = await res.json();
@@ -168,45 +188,209 @@ function App() {
     setNewMemory({ title: '', body: '', photoUrl: '' });
   };
 
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    return headers;
+  };
+
+  const fetchFriendMap = async () => {
+    setFriendMapMessage('');
+    setFriendMapOwner(null);
+    setFriendMapMarkers([]);
+    if (!friendMapId.trim()) {
+      setFriendMapMessage('친구 ID를 입력하세요.');
+      return;
+    }
+
+    try {
+      const userRes = await fetch(`${API_BASE}/users/${encodeURIComponent(friendMapId.trim())}`);
+      if (!userRes.ok) {
+        setFriendMapMessage('해당 친구를 찾을 수 없습니다.');
+        return;
+      }
+      const user: UserSummary = await userRes.json();
+      setFriendMapOwner(user);
+
+      const res = await fetch(`${API_BASE}/users/${encodeURIComponent(friendMapId.trim())}/map`);
+      if (!res.ok) {
+        setFriendMapMessage('친구의 지도 사진을 불러올 수 없습니다.');
+        return;
+      }
+      const data = await res.json();
+      setFriendMapMarkers(data);
+      if (!data.length) {
+        setFriendMapMessage('친구의 지도에는 아직 사진이 없습니다.');
+      }
+    } catch (err) {
+      console.error(err);
+      setFriendMapMessage('서버에서 친구 데이터를 불러올 수 없습니다.');
+    }
+  };
+
+  const fetchFollowing = async (userId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/following`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        setFollowing(await res.json());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAuthSubmit = async () => {
+    setAuthMessage('');
+    const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+    const payload = authMode === 'login'
+      ? { username: authForm.username.trim(), password: authForm.password }
+      : { username: authForm.username.trim(), password: authForm.password, name: authForm.name.trim() };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        setAuthMessage(errorText || 'Login/Register failed');
+        return;
+      }
+
+      const data: AuthResponse = await res.json();
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      setAuthMessage(`${authMode === 'login' ? '로그인' : '회원가입'} 성공: ${data.user.name}`);
+      setAuthForm({ username: '', password: '', name: '' });
+    } catch (err) {
+      console.error(err);
+      setAuthMessage('서버에 연결할 수 없습니다.');
+    }
+  };
+
+  const logout = () => {
+    setAuthToken(null);
+    setCurrentUser(null);
+    setFollowing([]);
+    setAuthMessage('로그아웃되었습니다.');
+  };
+
   const searchFriends = async () => {
     const res = await fetch(`${API_BASE}/users/search?query=${encodeURIComponent(search)}`);
-    setFriends(await res.json());
+    if (res.ok) {
+      setFriends(await res.json());
+    }
   };
 
   const follow = async (userId: string) => {
-    const res = await fetch(`${API_BASE}/users/${userId}/follow`, { method: 'POST' });
+    if (!authToken) {
+      setAuthMessage('팔로우하려면 먼저 로그인하세요.');
+      return;
+    }
+
+    const res = await fetch(`${API_BASE}/users/${userId}/follow`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      setAuthMessage(errorText || '팔로우에 실패했습니다.');
+      return;
+    }
+
     const body = await res.json();
     if (body.followed) {
-      const updated = friends.map((user) => user.id === userId ? { ...user, following: user.following + 1 } : user);
-      setFriends(updated);
+      fetchFollowing(currentUser?.id ?? '');
+      setAuthMessage('팔로우 성공했습니다.');
     }
   };
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="section">
-          <h2>Upload Photos</h2>
-          <p className="section-subtitle">Select images with GPS metadata to place them on the map.</p>
-          <input type="file" multiple accept="image/*" onChange={(e) => handleFileChange(e.target.files)} />
-          <button className="upload-button" onClick={handleUpload} disabled={!uploadFiles.length}>
-            Upload selected files
-          </button>
-          {uploadFiles.length > 0 && (
-            <div className="selected-files">
-              {uploadFiles.map((file) => (
-                <span key={file.name}>{file.name}</span>
-              ))}
+        <div className="section auth-section">
+          <div className="section-header">
+            <h2>{currentUser ? '내 계정' : authMode === 'login' ? '로그인' : '회원가입'}</h2>
+            {currentUser ? (
+              <button className="link-button" onClick={logout}>로그아웃</button>
+            ) : (
+              <button className="link-button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+                {authMode === 'login' ? '회원가입' : '로그인'} 전환
+              </button>
+            )}
+          </div>
+          {currentUser ? (
+            <div className="auth-summary">
+              <p>안녕하세요, <strong>{currentUser.name}</strong>님</p>
+              <p>ID: <code>{currentUser.id}</code></p>
+              <p>팔로잉: {currentUser.following}명</p>
+            </div>
+          ) : (
+            <div className="auth-form">
+              <input
+                placeholder="Username"
+                value={authForm.username}
+                onChange={(e) => setAuthForm({ ...authForm, username: e.target.value })}
+              />
+              {authMode === 'register' && (
+                <input
+                  placeholder="Display name"
+                  value={authForm.name}
+                  onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+                />
+              )}
+              <input
+                type="password"
+                placeholder="Password"
+                value={authForm.password}
+                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+              />
+              <button onClick={handleAuthSubmit}>
+                {authMode === 'login' ? '로그인' : '회원가입'}
+              </button>
+              {authMessage && <p className="status-text">{authMessage}</p>}
             </div>
           )}
-          <p className="status-text">{uploadStatus}</p>
+        </div>
+
+        <div className="section">
+          <div className="section-header">
+            <h2>Upload Photos</h2>
+            <button className="link-button" onClick={() => setUploadVisible((visible) => !visible)}>
+              {uploadVisible ? '숨기기' : '보이기'}
+            </button>
+          </div>
+          {uploadVisible ? (
+            <>
+              <p className="section-subtitle">Select images with GPS metadata to place them on the map.</p>
+              <input type="file" multiple accept="image/*" onChange={(e) => handleFileChange(e.target.files)} />
+              <button className="upload-button" onClick={handleUpload} disabled={!uploadFiles.length}>
+                Upload selected files
+              </button>
+              {uploadFiles.length > 0 && (
+                <div className="selected-files">
+                  {uploadFiles.map((file) => (
+                    <span key={file.name}>{file.name}</span>
+                  ))}
+                </div>
+              )}
+              <p className="status-text">{uploadStatus}</p>
+            </>
+          ) : (
+            <p className="section-subtitle">업로드 패널이 숨겨져 있습니다. 다시 보이게 하려면 버튼을 누르세요.</p>
+          )}
         </div>
 
         <div className="section">
           <h2>Find Friends</h2>
           <p className="section-subtitle">Search people and follow them to see their activity.</p>
           <div className="search-row">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" />
             <button onClick={searchFriends}>Search</button>
           </div>
           <div className="friend-list">
@@ -215,27 +399,55 @@ function App() {
                 <img src={friend.avatarUrl} alt={friend.name} />
                 <div>
                   <p>{friend.name}</p>
+                  <small>ID: {friend.id}</small>
                   <small>{friend.followers} followers</small>
                 </div>
-                <button onClick={() => follow(friend.id)}>Follow</button>
+                <button onClick={() => follow(friend.id)} disabled={!authToken}>
+                  {authToken ? 'Follow' : 'Login to follow'}
+                </button>
               </div>
             ))}
           </div>
         </div>
 
         <div className="section">
-          <h2>Following</h2>
-          <div className="friend-list">
-            {following.length ? following.map((user) => (
-              <div key={user.id} className="friend-card">
-                <img src={user.avatarUrl} alt={user.name} />
-                <div>
-                  <p>{user.name}</p>
-                  <small>{user.followers} followers</small>
-                </div>
-              </div>
-            )) : <p>No following users yet.</p>}
+          <h2>Friend Map</h2>
+          <p className="section-subtitle">친구 ID를 입력하면 친구의 map 사진을 볼 수 있습니다.</p>
+          <div className="search-row">
+            <input value={friendMapId} onChange={(e) => setFriendMapId(e.target.value)} placeholder="Enter friend ID" />
+            <button onClick={fetchFriendMap}>Load map</button>
           </div>
+          {friendMapMessage && <p className="status-text">{friendMapMessage}</p>}
+          {friendMapOwner && (
+            <div className="friend-map-summary">
+              <p><strong>{friendMapOwner.name}</strong>님의 map</p>
+              <p>ID: {friendMapOwner.id}</p>
+            </div>
+          )}
+          <div className="friend-list">
+            {friendMapMarkers.length ? friendMapMarkers.map((group, index) => (
+              <div key={`${group.latitude}-${group.longitude}-${index}`} className="friend-card">
+                <div>
+                  <p>{group.photos.length} Photos at {group.latitude.toFixed(3)}, {group.longitude.toFixed(3)}</p>
+                  <small>Coordinates</small>
+                </div>
+                <button onClick={() => setSelectedMarker(group)}>View on map</button>
+              </div>
+            )) : (friendMapOwner ? <p className="section-subtitle">친구의 사진 그룹이 없습니다.</p> : null)}
+          </div>
+        </div>
+
+        <div className="section">
+          <h2>Following</h2>
+          {following.length ? following.map((user) => (
+            <div key={user.id} className="friend-card">
+              <img src={user.avatarUrl} alt={user.name} />
+              <div>
+                <p>{user.name}</p>
+                <small>{user.followers} followers</small>
+              </div>
+            </div>
+          )) : <p>{authToken ? 'No following users yet.' : '로그인 후 팔로우를 시작하세요.'}</p>}
         </div>
 
         <div className="section">
@@ -265,7 +477,7 @@ function App() {
           <p className="section-subtitle">Share your memories with friends and keep the moments alive.</p>
           <div className="memory-form">
             <input placeholder="Title" value={newMemory.title} onChange={(e) => setNewMemory({ ...newMemory, title: e.target.value })} />
-            <textarea placeholder="Story" value={newMemory.body} onChange={(e) => setNewMemory({ ...newMemory, body: e.target.value })} />
+            <textarea placeholder="Story (tag with @friendid)" value={newMemory.body} onChange={(e) => setNewMemory({ ...newMemory, body: e.target.value })} />
             <input placeholder="Photo URL" value={newMemory.photoUrl} onChange={(e) => setNewMemory({ ...newMemory, photoUrl: e.target.value })} />
             <button onClick={shareMemory}>Share memory</button>
           </div>
