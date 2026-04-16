@@ -2,6 +2,7 @@ package com.whereyouat.service;
 
 import com.whereyouat.model.*;
 import com.whereyouat.repository.*;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ public class WhereYouAtService {
     private final PhotoRepository photoRepository;
     private final MemoryRepository memoryRepository;
     private final PinTagRepository pinTagRepository;
+    private final JdbcTemplate jdbcTemplate;
     private final Map<String, String> authTokens = new ConcurrentHashMap<>();
 
     private static final Pattern TAG_PATTERN = Pattern.compile("@([a-zA-Z0-9_-]+)");
@@ -30,14 +32,33 @@ public class WhereYouAtService {
     public WhereYouAtService(UserRepository userRepository,
                              PhotoRepository photoRepository,
                              MemoryRepository memoryRepository,
-                             PinTagRepository pinTagRepository) {
+                             PinTagRepository pinTagRepository,
+                             JdbcTemplate jdbcTemplate) {
         this.userRepository = userRepository;
         this.photoRepository = photoRepository;
         this.memoryRepository = memoryRepository;
         this.pinTagRepository = pinTagRepository;
+        this.jdbcTemplate = jdbcTemplate;
+
+        ensureSchemaCompatibility();
 
         if (userRepository.count() == 0) {
             initializeDemoData();
+        }
+    }
+
+    private void ensureSchemaCompatibility() {
+        runSafeAlter("ALTER TABLE users ALTER COLUMN id TYPE varchar(50)");
+        runSafeAlter("ALTER TABLE photos ALTER COLUMN author_id TYPE varchar(50)");
+        runSafeAlter("ALTER TABLE user_following ALTER COLUMN user_id TYPE varchar(50)");
+        runSafeAlter("ALTER TABLE user_following ALTER COLUMN following_user_id TYPE varchar(50)");
+    }
+
+    private void runSafeAlter(String sql) {
+        try {
+            jdbcTemplate.execute(sql);
+        } catch (Exception ignored) {
+            // Ignore when table/column does not exist yet in fresh environments.
         }
     }
 
