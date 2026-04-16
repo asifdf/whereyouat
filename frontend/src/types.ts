@@ -11,6 +11,7 @@ export interface PhotoMarker {
 
 export interface UserSummary {
   id: string;
+  username: string;
   name: string;
   avatarUrl: string;
   followers: number;

@@ -271,6 +271,39 @@ button:hover {
   background: #111827;
 }
 
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+.sidebar-toggle {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    max-height: 45vh;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    max-height: 0;
+  }
+}
+
 .friend-list,
 .pin-list,
 .memory-list {

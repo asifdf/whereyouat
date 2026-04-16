@@ -71,9 +71,12 @@ public class WhereYouAtService {
         return new ArrayList<>(grouped.values());
     }
 
-    public List<PhotoGroup> getUserPhotoGroups(String userId) {
+    public List<PhotoGroup> getUserPhotoGroups(String userIdentifier) {
+        UserEntity target = findUserByIdentifier(userIdentifier)
+                .orElseThrow(() -> new NoSuchElementException("User not found"));
+
         Map<String, PhotoGroup> grouped = new HashMap<>();
-        photoRepository.findByAuthorId(userId).forEach(photo -> {
+        photoRepository.findByAuthorId(target.getId()).forEach(photo -> {
             String key = String.format("%.6f|%.6f", photo.getLatitude(), photo.getLongitude());
             grouped.computeIfAbsent(key, k -> new PhotoGroup(photo.getLatitude(), photo.getLongitude())).getPhotos().add(createPhotoItem(photo));
         });
@@ -96,8 +99,8 @@ public class WhereYouAtService {
                 .collect(Collectors.toList());
     }
 
-    public UserSummary getUserById(String userId) {
-        return userRepository.findById(userId)
+    public UserSummary getUserById(String userIdentifier) {
+        return findUserByIdentifier(userIdentifier)
                 .map(this::summaryFor)
                 .orElseThrow(() -> new NoSuchElementException("User not found"));
     }
@@ -138,9 +141,9 @@ public class WhereYouAtService {
     }
 
     @Transactional
-    public FollowerResponse followUser(String authorizationHeader, String userId) {
+    public FollowerResponse followUser(String authorizationHeader, String userIdentifier) {
         UserEntity current = getUserFromAuthorization(authorizationHeader);
-        UserEntity target = userRepository.findById(userId).orElse(null);
+        UserEntity target = findUserByIdentifier(userIdentifier).orElse(null);
         if (current == null || target == null) {
             throw new NoSuchElementException("User not found");
         }
@@ -148,11 +151,11 @@ public class WhereYouAtService {
         target.getFollowers().add(current);
         userRepository.save(current);
         userRepository.save(target);
-        return new FollowerResponse(userId, true, current.getFollowing().size());
+        return new FollowerResponse(target.getId(), true, current.getFollowing().size());
     }
 
-    public List<UserSummary> getFollowing(String userId) {
-        return userRepository.findById(userId)
+    public List<UserSummary> getFollowing(String userIdentifier) {
+        return findUserByIdentifier(userIdentifier)
                 .map(user -> user.getFollowing().stream().map(this::summaryFor).collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
     }
@@ -203,8 +206,26 @@ public class WhereYouAtService {
         return userId == null ? null : userRepository.findById(userId).orElse(null);
     }
 
+    private Optional<UserEntity> findUserByIdentifier(String identifier) {
+        if (identifier == null) {
+            return Optional.empty();
+        }
+
+        String trimmed = identifier.trim();
+        if (trimmed.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<UserEntity> byId = userRepository.findById(trimmed);
+        if (byId.isPresent()) {
+            return byId;
+        }
+
+        return userRepository.findByUsername(trimmed.toLowerCase());
+    }
+
     private UserSummary summaryFor(UserEntity user) {
-        return new UserSummary(user.getId(), user.getName(), user.getAvatarUrl(), user.getFollowers().size(), user.getFollowing().size());
+        return new UserSummary(user.getId(), user.getUsername(), user.getName(), user.getAvatarUrl(), user.getFollowers().size(), user.getFollowing().size());
     }
 
     private PhotoItem createPhotoItem(PhotoEntity photo) {

@@ -2,6 +2,7 @@ package com.whereyouat.model;
 
 public class UserSummary {
     private String id;
+    private String username;
     private String name;
     private String avatarUrl;
     private int followers;
@@ -10,8 +11,9 @@ public class UserSummary {
     public UserSummary() {
     }
 
-    public UserSummary(String id, String name, String avatarUrl, int followers, int following) {
+    public UserSummary(String id, String username, String name, String avatarUrl, int followers, int following) {
         this.id = id;
+        this.username = username;
         this.name = name;
         this.avatarUrl = avatarUrl;
         this.followers = followers;
@@ -20,6 +22,10 @@ public class UserSummary {
 
     public String getId() {
         return id;
+    }
+
+    public String getUsername() {
+        return username;
     }
 
     public String getName() {
@@ -40,6 +46,10 @@ public class UserSummary {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public void setName(String name) {

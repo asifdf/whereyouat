@@ -70,11 +70,12 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState('');
   const [newPin, setNewPin] = useState({ title: '', description: '', latitude: '', longitude: '', taggedNames: '' });
   const [newMemory, setNewMemory] = useState({ title: '', body: '', photoUrl: '' });
-  const [friendMapId, setFriendMapId] = useState('');
+  const [friendMapUsername, setFriendMapUsername] = useState('');
   const [friendMapOwner, setFriendMapOwner] = useState<UserSummary | null>(null);
   const [friendMapMarkers, setFriendMapMarkers] = useState<PhotoMarker[]>([]);
   const [friendMapMessage, setFriendMapMessage] = useState('');
   const [uploadVisible, setUploadVisible] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserSummary | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -90,7 +91,7 @@ function App() {
 
   useEffect(() => {
     if (currentUser) {
-      fetchFollowing(currentUser.id);
+      fetchFollowing(currentUser.username || currentUser.id);
     } else {
       setFollowing([]);
     }
@@ -113,7 +114,7 @@ function App() {
   const filteredFriends = useMemo(() => {
     const lower = search.toLowerCase();
     return friends.filter((friend) =>
-      friend.name.toLowerCase().includes(lower) || friend.id.toLowerCase().includes(lower)
+      friend.name.toLowerCase().includes(lower) || friend.username.toLowerCase().includes(lower)
     );
   }, [friends, search]);
 
@@ -265,13 +266,14 @@ function App() {
     setFriendMapMessage('');
     setFriendMapOwner(null);
     setFriendMapMarkers([]);
-    if (!friendMapId.trim()) {
-      setFriendMapMessage('친구 ID를 입력하세요.');
+    if (!friendMapUsername.trim()) {
+      setFriendMapMessage('친구 username을 입력하세요.');
       return;
     }
 
     try {
-      const userRes = await fetch(`${API_BASE}/users/${encodeURIComponent(friendMapId.trim())}`);
+      const identifier = friendMapUsername.trim().toLowerCase();
+      const userRes = await fetch(`${API_BASE}/users/${encodeURIComponent(identifier)}`);
       if (!userRes.ok) {
         setFriendMapMessage('해당 친구를 찾을 수 없습니다.');
         return;
@@ -279,7 +281,7 @@ function App() {
       const user: UserSummary = await userRes.json();
       setFriendMapOwner(user);
 
-      const res = await fetch(`${API_BASE}/users/${encodeURIComponent(friendMapId.trim())}/map`);
+      const res = await fetch(`${API_BASE}/users/${encodeURIComponent(identifier)}/map`);
       if (!res.ok) {
         setFriendMapMessage('친구의 지도 사진을 불러올 수 없습니다.');
         return;
@@ -373,13 +375,13 @@ function App() {
 
     const body = await res.json();
     if (body.followed) {
-      fetchFollowing(currentUser?.id ?? '');
+      fetchFollowing(currentUser?.username ?? currentUser?.id ?? '');
       setAuthMessage('팔로우 성공했습니다.');
     }
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
         <div className="section auth-section">
           <div className="section-header">
@@ -395,7 +397,7 @@ function App() {
           {currentUser ? (
             <div className="auth-summary">
               <p>안녕하세요, <strong>{currentUser.name}</strong>님</p>
-              <p>ID: <code>{currentUser.id}</code></p>
+              <p>Username: <strong>@{currentUser.username}</strong></p>
               <p>팔로잉: {currentUser.following}명</p>
             </div>
           ) : (
@@ -458,7 +460,7 @@ function App() {
           <h2>Find Friends</h2>
           <p className="section-subtitle">Search people and follow them to see their activity.</p>
           <div className="search-row">
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or ID" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or username" />
             <button onClick={searchFriends}>Search</button>
           </div>
           <div className="friend-list">
@@ -467,10 +469,10 @@ function App() {
                 <img src={friend.avatarUrl} alt={friend.name} />
                 <div>
                   <p>{friend.name}</p>
-                  <small>ID: {friend.id}</small>
+                  <small>@{friend.username}</small>
                   <small>{friend.followers} followers</small>
                 </div>
-                <button onClick={() => follow(friend.id)} disabled={!authToken}>
+                <button onClick={() => follow(friend.username)} disabled={!authToken}>
                   {authToken ? 'Follow' : 'Login to follow'}
                 </button>
               </div>
@@ -480,16 +482,16 @@ function App() {
 
         <div className="section">
           <h2>Friend Map</h2>
-          <p className="section-subtitle">친구 ID를 입력하면 친구의 map 사진을 볼 수 있습니다.</p>
+          <p className="section-subtitle">친구 username을 입력하면 친구의 map 사진을 볼 수 있습니다.</p>
           <div className="search-row">
-            <input value={friendMapId} onChange={(e) => setFriendMapId(e.target.value)} placeholder="Enter friend ID" />
+            <input value={friendMapUsername} onChange={(e) => setFriendMapUsername(e.target.value)} placeholder="Enter friend username" />
             <button onClick={fetchFriendMap}>Load map</button>
           </div>
           {friendMapMessage && <p className="status-text">{friendMapMessage}</p>}
           {friendMapOwner && (
             <div className="friend-map-summary">
               <p><strong>{friendMapOwner.name}</strong>님의 map</p>
-              <p>ID: {friendMapOwner.id}</p>
+              <p>Username: @{friendMapOwner.username}</p>
             </div>
           )}
           <div className="friend-list">
@@ -545,7 +547,7 @@ function App() {
           <p className="section-subtitle">Share your memories with friends and keep the moments alive.</p>
           <div className="memory-form">
             <input placeholder="Title" value={newMemory.title} onChange={(e) => setNewMemory({ ...newMemory, title: e.target.value })} />
-            <textarea placeholder="Story (tag with @friendid)" value={newMemory.body} onChange={(e) => setNewMemory({ ...newMemory, body: e.target.value })} />
+            <textarea placeholder="Story (tag with @username)" value={newMemory.body} onChange={(e) => setNewMemory({ ...newMemory, body: e.target.value })} />
             <input placeholder="Photo URL" value={newMemory.photoUrl} onChange={(e) => setNewMemory({ ...newMemory, photoUrl: e.target.value })} />
             <button onClick={shareMemory}>Share memory</button>
           </div>
@@ -570,6 +572,9 @@ function App() {
             <h1>WhereYouAt</h1>
             <p>Global map loaded in English style. Upload photos and pin favorite moments.</p>
           </div>
+          <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((v) => !v)}>
+            {sidebarCollapsed ? '패널 열기' : '패널 접기'}
+          </button>
         </div>
         <MapContainer center={defaultPosition} zoom={2} scrollWheelZoom className="map-container">
           <TileLayer
