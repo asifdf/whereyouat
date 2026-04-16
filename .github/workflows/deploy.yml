@@ -64,4 +64,9 @@ jobs:
         run: |
           aws elasticbeanstalk update-environment \
             --environment-name whereyouat-env \
-            --version-label v-${{ github.sha }}
+            --version-label v-${{ github.sha }} \
+            --option-settings \
+              Namespace=aws:elasticbeanstalk:application:environment,OptionName=PORT,Value=5000 \
+              Namespace=aws:elasticbeanstalk:application:environment,OptionName=SPRING_DATASOURCE_URL,Value=jdbc:postgresql://whereyouat-db.clkio0y0qcrh.ap-northeast-2.rds.amazonaws.com:5432/whereyouat \
+              Namespace=aws:elasticbeanstalk:application:environment,OptionName=SPRING_DATASOURCE_USERNAME,Value=postgres \
+              Namespace=aws:elasticbeanstalk:application:environment,OptionName=SPRING_DATASOURCE_PASSWORD,Value=00000000
