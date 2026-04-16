@@ -111,9 +111,14 @@ function App() {
     map.fitBounds(bounds);
   };
 
-  const fetchMarkers = async () => {
+  const fetchMarkers = async (userIdentifier?: string) => {
+    if (!userIdentifier) {
+      setMarkers([]);
+      return;
+    }
+
     try {
-      const response = await fetch(`${API_BASE}/map`);
+      const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userIdentifier)}/map`);
       if (!response.ok) {
         throw new Error('Unable to fetch map markers');
       }
@@ -136,10 +141,11 @@ function App() {
       return;
     }
 
-    fetchMarkers();
+    const myIdentifier = currentUser?.username ?? currentUser?.id;
+    fetchMarkers(myIdentifier);
     fetch(`${API_BASE}/pins`).then((res) => res.json()).then(setPins);
     fetch(`${API_BASE}/memories`).then((res) => res.json()).then(setMemories);
-  }, [authToken]);
+  }, [authToken, currentUser]);
 
   useEffect(() => {
     const initMap = () => {
@@ -445,7 +451,7 @@ function App() {
     if (uploadInputRef.current) {
       uploadInputRef.current.value = '';
     }
-    await fetchMarkers();
+    await fetchMarkers(currentUser?.username ?? currentUser?.id);
   };
 
   const handleFileChange = (files: FileList | null) => {
