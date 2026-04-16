@@ -8,10 +8,11 @@ const resolveApiBase = () => {
   const apiUrl = import.meta.env.VITE_API_URL;
   if (apiUrl) {
     const trimmed = apiUrl.trim().replace(/\/$/, '');
-    return /^https?:\/\//i.test(trimmed) ? `${trimmed}/api` : `https://${trimmed}/api`;
+    return /^https?:\/\//i.test(trimmed) ? `${trimmed}/api` : `https://${trimmed}/api`;    cd /Users/seoeunsu/Downloads/whereyouat/backend
+    DB_HOST=whereyouat-db.clkio0y0qcrh.ap-northeast-2.rds.amazonaws.com DB_PORT=5432 DB_NAME=whereyouat DB_USERNAME=postgres DB_PASSWORD=00000000 /tmp/apache-maven-3.9.11/bin/mvn spring-boot:run -DskipTests
   }
 
-  const base = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080/api';
+  const base = import.meta.env.VITE_API_BASE ?? 'http://whereyouat-env.eba-7gf9xpfu.ap-northeast-2.elasticbeanstalk.com/api';
   const trimmedBase = base.trim().replace(/\/$/, '');
   return trimmedBase.endsWith('/api') ? trimmedBase : `${trimmedBase}/api`;
 };
